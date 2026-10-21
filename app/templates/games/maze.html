@@ -1,0 +1,456 @@
+{% extends "base.html" %}
+
+{% block title %}{{ game.name }} - Play{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-2">
+        <div class="col">
+            <h4 class="mb-1">{{ game.name }}</h4>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Maze Canvas -->
+        <div class="col-md-7">
+            <div class="card">
+                <div class="card-body text-center p-2">
+                    <div class="up-focus-panel">
+                        <div class="up-focus-title">Focus here to move UP</div>
+                        <div class="up-focus-dot"></div>
+                    </div>
+                    <canvas id="mazeCanvas" width="420" height="420" style="border: 2px solid #333; background: #fff;"></canvas>
+                    <div class="mt-2">
+                        <button id="endGameBtn" class="btn btn-danger" style="display:none;">End Game</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats & EEG Panel -->
+        <div class="col-md-5">
+            <!-- Game Stats -->
+            <div class="card mb-2">
+                <div class="card-header bg-primary text-white">
+                    <h6 class="mb-0">Game Stats</h6>
+                </div>
+                <div class="card-body p-2">
+                    <div class="d-flex justify-content-between mb-1">
+                        <small><strong>Difficulty:</strong> <span id="statDifficulty">{{ initial_difficulty }}</span>/10</small>
+                        <small><strong>Moves:</strong> <span id="statMoves">0</span></small>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <small><strong>Time:</strong> <span id="statTime">0.0</span>s</small>
+                        <small><strong>Status:</strong> <span id="statStatus" class="badge bg-info">Playing</span></small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EEG Feedback -->
+            <div class="card mb-2">
+                <div class="card-header bg-success text-white">
+                    <h6 class="mb-0">Brain Metrics</h6>
+                </div>
+                <div class="card-body p-2">
+                    <div class="mb-2">
+                        <label class="small fw-bold mb-1">Attention</label>
+                        <div class="progress" style="height: 20px;">
+                            <div id="eegAttention" class="progress-bar bg-info" role="progressbar" style="width: 50%;">50%</div>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="small fw-bold mb-1">Cognitive Load</label>
+                        <div class="progress" style="height: 20px;">
+                            <div id="eegLoad" class="progress-bar bg-warning" role="progressbar" style="width: 50%;">50%</div>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="small fw-bold mb-1">Relaxation</label>
+                        <div class="progress" style="height: 20px;">
+                            <div id="eegRelaxation" class="progress-bar bg-success" role="progressbar" style="width: 50%;">50%</div>
+                        </div>
+                    </div>
+                    <div class="alert alert-light mb-0 p-2">
+                        <small><strong>Last:</strong> <span id="lastCommand">Waiting...</span></small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DDA Feedback -->
+            <div class="card mb-2">
+                <div class="card-header bg-dark text-white">
+                    <h6 class="mb-0">DDA Status</h6>
+                </div>
+                <div class="card-body p-2">
+                    <div class="mb-1">
+                        <small><strong>Current:</strong> <span id="ddaCurrent">{{ initial_difficulty }}</span>/10</small>
+                    </div>
+                    <div class="mb-2">
+                        <small><strong>Next:</strong> <span id="ddaNext">Waiting...</span></small>
+                    </div>
+                    <div id="ddaReason" class="alert alert-info mb-0 p-2">
+                        <small>DDA adjusts based on performance and brain metrics.</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Instructions -->
+            <div class="card">
+                <div class="card-header bg-secondary text-white">
+                    <h6 class="mb-0">How to Play</h6>
+                </div>
+                <div class="card-body p-2">
+                    <ul class="small mb-0 ps-3">
+                        <li>Navigate from <strong style="color: blue;">START</strong> to <strong style="color: gold;">GOAL</strong></li>
+                        <li><strong>Focus on red dot</strong> to move UP</li>
+                        <li>Movement: UP, LEFT, RIGHT only</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.up-focus-panel {
+    background: #111;
+    border: 3px solid #ff3b3b;
+    border-radius: 14px;
+    box-shadow: 0 0 18px rgba(255, 0, 0, 0.35);
+    margin-bottom: 0.75rem;
+    padding: 0.75rem;
+}
+
+.up-focus-title {
+    color: white;
+    font-size: 0.9rem;
+    font-weight: 800;
+    margin-bottom: 0.5rem;
+}
+
+.up-focus-dot {
+    animation: upDotFlicker 0.45s infinite alternate;
+    background: #ff0000;
+    border-radius: 50%;
+    box-shadow: 0 0 32px #ff0000;
+    height: 50px;
+    margin: 0 auto;
+    width: 50px;
+}
+
+@keyframes upDotFlicker {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0.25; transform: scale(0.82); }
+}
+</style>
+
+<script>
+// Game state
+let sessionId = null;
+let mazeData = null;
+let playerPosition = null;
+let goalPosition = null;
+let mazeSize = 0;
+let cellSize = 0;
+let gameStartTime = null;
+let timerInterval = null;
+let statePollerInterval = null;
+let flickerInterval = null;
+let eegCommandInterval = null;
+let eegCommandInFlight = false;
+let showFlickerDot = true;
+
+const canvas = document.getElementById('mazeCanvas');
+const ctx = canvas.getContext('2d');
+
+// Initialize game
+async function initGame() {
+    try {
+        const response = await fetch('/api/maze/session/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({game_id: {{ game.id }}})
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to start session');
+        }
+        
+        const data = await response.json();
+        sessionId = data.session_id;
+        mazeData = data.maze;
+        playerPosition = [...data.start];
+        goalPosition = [...data.goal];
+        mazeSize = data.size;
+        cellSize = 420 / mazeSize;
+        
+        // Store session ID in localStorage for neurofeedback module
+        localStorage.setItem('maze_session_id', sessionId);
+        
+        document.getElementById('statDifficulty').textContent = data.initial_difficulty;
+        document.getElementById('ddaCurrent').textContent = data.initial_difficulty;
+        document.getElementById('endGameBtn').style.display = 'inline-block';
+        
+        console.log('=== MAZE GAME STARTED ===');
+        console.log('Session ID:', sessionId);
+        console.log('Initial Difficulty:', data.initial_difficulty);
+        console.log('Maze Size:', mazeSize);
+        console.log('Start:', data.start, 'Goal:', data.goal);
+        
+        gameStartTime = Date.now();
+        startTimer();
+        startStatePoller();
+        startEEGCommandLoop();
+        startFlicker();
+        drawMaze();
+        
+        console.log('Game started! Session ID:', sessionId);
+    } catch (error) {
+        console.error('Error starting game:', error);
+        alert('Failed to start game. Please try again.');
+    }
+}
+
+// Draw maze on canvas
+function drawMaze() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw maze walls and paths
+    for (let y = 0; y < mazeSize; y++) {
+        for (let x = 0; x < mazeSize; x++) {
+            if (mazeData[y][x]) {
+                // Wall
+                ctx.fillStyle = '#333';
+                ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+            } else {
+                // Path
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+            }
+            
+            // Grid lines
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        }
+    }
+    
+    // Draw goal (green star)
+    ctx.fillStyle = '#28a745';
+    ctx.beginPath();
+    const goalX = goalPosition[0] * cellSize + cellSize / 2;
+    const goalY = goalPosition[1] * cellSize + cellSize / 2;
+    const starRadius = cellSize * 0.4;
+    for (let i = 0; i < 5; i++) {
+        const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+        const x = goalX + starRadius * Math.cos(angle);
+        const y = goalY + starRadius * Math.sin(angle);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    
+    // Draw player (blue circle)
+    ctx.fillStyle = '#007bff';
+    ctx.beginPath();
+    ctx.arc(
+        playerPosition[0] * cellSize + cellSize / 2,
+        playerPosition[1] * cellSize + cellSize / 2,
+        cellSize * 0.35,
+        0,
+        2 * Math.PI
+    );
+    ctx.fill();
+}
+
+// Flicker effect for upward movement indicator
+function startFlicker() {
+    flickerInterval = setInterval(() => {
+        showFlickerDot = !showFlickerDot;
+        drawMaze();
+    }, 300); // Flicker every 300ms
+}
+
+// Timer
+function startTimer() {
+    timerInterval = setInterval(() => {
+        const elapsed = (Date.now() - gameStartTime) / 1000;
+        document.getElementById('statTime').textContent = elapsed.toFixed(1);
+    }, 100);
+}
+
+function startEEGCommandLoop() {
+    eegCommandInterval = setInterval(async () => {
+        if (!sessionId || eegCommandInFlight) return;
+
+        eegCommandInFlight = true;
+        try {
+            const response = await fetch('/api/maze/eeg/command', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({session_id: sessionId})
+            });
+            const data = await response.json();
+
+            if (!response.ok) {
+                document.getElementById('lastCommand').textContent = data.error || 'EEG command failed';
+                return;
+            }
+
+            const commandLabel = data.prediction || data.action || 'Unknown';
+            const confidence = Math.round((data.confidence || 0) * 100);
+            document.getElementById('lastCommand').textContent = `${commandLabel} (${confidence}%) - ${data.message}`;
+
+            if (data.eeg) {
+                updateEEGBars(data.eeg);
+            }
+
+            if (data.new_position) {
+                playerPosition = [...data.new_position];
+                document.getElementById('statMoves').textContent = data.moves_count;
+                drawMaze();
+            }
+
+            if (data.reached_goal) {
+                await endGame(true);
+            }
+        } catch (error) {
+            console.error('Error requesting EEG command:', error);
+            document.getElementById('lastCommand').textContent = 'EEG command error';
+        } finally {
+            eegCommandInFlight = false;
+        }
+    }, 5500);
+}
+
+// Poll session state for updates
+function startStatePoller() {
+    statePollerInterval = setInterval(async () => {
+        if (!sessionId) return;
+        
+        try {
+            const response = await fetch(`/api/maze/session/${sessionId}/state`);
+            if (!response.ok) return;
+            
+            const data = await response.json();
+            
+            // Update position if changed
+            if (data.current_position[0] !== playerPosition[0] || 
+                data.current_position[1] !== playerPosition[1]) {
+                playerPosition = [...data.current_position];
+                document.getElementById('statMoves').textContent = data.moves_count;
+                drawMaze();
+                
+                // Check if goal reached
+                if (data.current_position[0] === goalPosition[0] && 
+                    data.current_position[1] === goalPosition[1]) {
+                    await endGame(true);
+                }
+            }
+            
+            // Update EEG metrics
+            if (data.eeg) {
+                updateEEGBars(data.eeg);
+            }
+            
+        } catch (error) {
+            console.error('Error polling state:', error);
+        }
+    }, 500);
+}
+
+// Update EEG progress bars
+function updateEEGBars(eeg) {
+    const clampMetric = (value) => Math.max(0, Math.min(100, Math.round((Number(value) || 0) * 100)));
+    const attention = clampMetric(eeg.attention);
+    const load = clampMetric(eeg.cognitive_load);
+    const relaxation = clampMetric(eeg.relaxation);
+
+    document.getElementById('eegAttention').style.width = attention + '%';
+    document.getElementById('eegAttention').textContent = attention + '%';
+
+    document.getElementById('eegLoad').style.width = load + '%';
+    document.getElementById('eegLoad').textContent = load + '%';
+
+    document.getElementById('eegRelaxation').style.width = relaxation + '%';
+    document.getElementById('eegRelaxation').textContent = relaxation + '%';
+}
+
+// End game
+async function endGame(goalReached) {
+    if (!sessionId) return;
+    
+    clearInterval(timerInterval);
+    clearInterval(statePollerInterval);
+    clearInterval(eegCommandInterval);
+    clearInterval(flickerInterval);
+    
+    document.getElementById('statStatus').textContent = goalReached ? 'Completed!' : 'Ended';
+    document.getElementById('statStatus').className = 'badge ' + (goalReached ? 'bg-success' : 'bg-secondary');
+    
+    try {
+        const response = await fetch(`/api/maze/session/${sessionId}/end`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to end session');
+        }
+        
+        const data = await response.json();
+
+        console.log('=== MAZE GAME ENDED ===');
+        console.log('Goal Reached:', data.goal_reached);
+        console.log('Moves:', data.moves_count, '/ Optimal:', data.optimal_moves);
+        console.log('Efficiency:', data.efficiency + '%');
+        console.log('Score:', data.score);
+        console.log('Current Difficulty:', data.current_difficulty);
+        console.log('Next Difficulty:', data.next_difficulty);
+        console.log('DDA Direction:', data.dda_direction);
+        console.log('DDA Reason:', data.dda_reason);
+        console.log('Avg Attention:', data.avg_attention);
+        console.log('Avg Cognitive Load:', data.avg_cognitive_load);
+        
+        const directionLabel = data.dda_direction === 'harder'
+            ? 'Harder ↑'
+            : data.dda_direction === 'easier'
+                ? 'Easier ↓'
+                : 'Same →';
+        document.getElementById('ddaCurrent').textContent = data.current_difficulty;
+        document.getElementById('ddaNext').textContent = `${data.next_difficulty}/10 (${directionLabel})`;
+        document.getElementById('ddaReason').textContent = data.dda_reason || 'DDA completed.';
+        
+        // Show results
+        const message = `
+            Goal Reached: ${data.goal_reached ? 'Yes ✓' : 'No ✗'}
+            Moves: ${data.moves_count} (Optimal: ${data.optimal_moves})
+            Efficiency: ${data.efficiency}%
+            Time: ${data.completion_time_seconds}s
+            Score: ${data.score}
+            DDA: ${directionLabel}
+            Reason: ${data.dda_reason}
+            Next Difficulty: ${data.next_difficulty}/10
+        `;
+        
+        if (confirm(message + '\n\nPlay again?')) {
+            location.reload();
+        }
+        
+    } catch (error) {
+        console.error('Error ending game:', error);
+    }
+}
+
+// End game button
+document.getElementById('endGameBtn').addEventListener('click', () => {
+    if (confirm('Are you sure you want to end the game?')) {
+        endGame(false);
+    }
+});
+
+// Start game on page load
+window.addEventListener('load', initGame);
+</script>
+{% endblock %}

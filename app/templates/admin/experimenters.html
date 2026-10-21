@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Experimenters - NeuroFeedback{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:1.5rem;">&#x1F52C; Experimenter Management</h1>
+
+<div class="grid grid-2">
+    <div class="card">
+        <div class="card-header">Add Experimenter</div>
+        <form method="POST">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required minlength="6">
+            </div>
+            <div class="form-group">
+                <label for="experimenter_code">Experimenter Code (optional, auto-generated if empty)</label>
+                <input type="text" id="experimenter_code" name="experimenter_code" placeholder="e.g. EXP-ALI-001">
+            </div>
+            <button type="submit" class="btn btn-success btn-block">Create Experimenter</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <div class="card-header">Existing Experimenters</div>
+        {% if experimenters %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Code</th>
+                        <th>Assigned Users</th>
+                        <th>Joined</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for exp in experimenters %}
+                    <tr>
+                        <td>{{ exp.id }}</td>
+                        <td>{{ exp.username }}</td>
+                        <td>{{ exp.email }}</td>
+                        <td><code>{{ exp.experimenter_code or '-' }}</code></td>
+                        <td>{{ exp.assigned_users.count() }}</td>
+                        <td>{{ exp.created_at.strftime('%Y-%m-%d') if exp.created_at else '-' }}</td>
+                        <td><a href="{{ url_for('admin.edit_experimenter', exp_id=exp.id) }}" class="btn btn-secondary btn-sm">Edit</a></td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <p style="color:var(--text-muted);">No experimenters yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

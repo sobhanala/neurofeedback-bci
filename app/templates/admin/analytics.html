@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Analytics - NeuroFeedback{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:1.5rem;">&#x1F4CA; Analytics</h1>
+
+<div class="grid grid-2">
+    <div class="card">
+        <div class="card-header">Daily Sessions (Last 30 Days)</div>
+        <div class="chart-container">
+            <canvas id="dailyChart" height="200"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">DDA Algorithm Comparison</div>
+        {% if algo_stats %}
+        <table>
+            <thead><tr><th>Algorithm</th><th>Sessions</th><th>Avg Score</th><th>Avg RT (ms)</th></tr></thead>
+            <tbody>
+            {% for stat in algo_stats %}
+            <tr>
+                <td><span class="badge-algo">{{ stat.dda_algorithm_used or 'N/A' }}</span></td>
+                <td>{{ stat.sessions }}</td>
+                <td>{{ "%.1f"|format(stat.avg_score or 0) }}</td>
+                <td>{{ "%.0f"|format(stat.avg_rt or 0) }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+            <p style="color:var(--text-muted);">No data yet.</p>
+        {% endif %}
+
+        <div class="chart-container" style="margin-top:1rem;">
+            <canvas id="algoChart" height="200"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Daily sessions chart
+const dailyCtx = document.getElementById('dailyChart').getContext('2d');
+new Chart(dailyCtx, {
+    type: 'bar',
+    data: {
+        labels: [{% for d in daily_sessions %}"{{ d.date }}"{% if not loop.last %},{% endif %}{% endfor %}],
+        datasets: [{
+            label: 'Sessions',
+            data: [{% for d in daily_sessions %}{{ d.count }}{% if not loop.last %},{% endif %}{% endfor %}],
+            backgroundColor: '#6c5ce7',
+            borderRadius: 6,
+        }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } } }
+});
+
+// Algorithm comparison chart
+{% if algo_stats %}
+const algoCtx = document.getElementById('algoChart').getContext('2d');
+new Chart(algoCtx, {
+    type: 'bar',
+    data: {
+        labels: [{% for s in algo_stats %}"{{ s.dda_algorithm_used or 'N/A' }}"{% if not loop.last %},{% endif %}{% endfor %}],
+        datasets: [{
+            label: 'Avg Score',
+            data: [{% for s in algo_stats %}{{ "%.1f"|format(s.avg_score or 0) }}{% if not loop.last %},{% endif %}{% endfor %}],
+            backgroundColor: '#00b894',
+            borderRadius: 6,
+        }]
+    },
+    options: { responsive: true }
+});
+{% endif %}
+</script>
+{% endblock %}

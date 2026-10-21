@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}{{ game.name }} - Stats{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:1.5rem;">&#x1F3AE; {{ game.name }}</h1>
+
+<div class="card">
+    <div class="card-header">Game Info</div>
+    <p><strong>Type:</strong> {{ game.game_type }}{% if game.is_unity_game %} (Unity){% endif %}</p>
+    <p><strong>Difficulty:</strong> {{ game.min_difficulty }} - {{ game.max_difficulty }} (default: {{ game.default_difficulty }})</p>
+    <p><strong>DDA Algorithm:</strong> <span class="badge-algo">{{ game.dda_algorithm }}</span></p>
+    <p><strong>Active:</strong> {{ "Yes" if game.is_active else "No" }}</p>
+    {% if game.description %}<p><strong>Description:</strong> {{ game.description }}</p>{% endif %}
+</div>
+
+<div class="card">
+    <div class="card-header">&#x1F465; Per-User Stats for this Game</div>
+    {% if user_stats %}
+    <div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>User</th>
+                <th>Sessions</th>
+                <th>Avg Score</th>
+                <th>Best Score</th>
+                <th>Avg RT</th>
+                <th>Accuracy</th>
+                <th>Last Played</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for u in user_stats %}
+        <tr>
+            <td>{{ u.username }}</td>
+            <td>{{ u.sessions }}</td>
+            <td>{{ "%.1f"|format(u.avg_score) }}</td>
+            <td>{{ "%.1f"|format(u.best_score) }}</td>
+            <td>{{ "%.0f"|format(u.avg_rt) }}ms</td>
+            <td>
+                {{ u.accuracy_pct }}%
+                <div class="progress-bar" style="max-width:120px;"><div class="fill" style="width: {{ u.accuracy_pct }}%;"></div></div>
+            </td>
+            <td>{{ u.last_played.strftime('%Y-%m-%d %H:%M') if u.last_played else '-' }}</td>
+            <td><a href="{{ url_for('admin.user_detail', user_id=u.user_id) }}" class="btn btn-primary btn-sm">View User</a></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+        <p style="color:var(--text-muted);">No users have played this game yet.</p>
+    {% endif %}
+</div>
+
+{% if user_stats %}
+<div class="card">
+    <div class="card-header">&#x1F4CA; User Comparison (Avg Score &amp; Accuracy)</div>
+    <canvas id="userGameChart" height="110"></canvas>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header">&#x1F4CB; Recent Sessions for this Game</div>
+    {% if recent_sessions %}
+    <div class="table-container">
+    <table>
+        <thead><tr><th>User</th><th>Score</th><th>Accuracy</th><th>Avg RT</th><th>Difficulty</th><th>Algorithm</th><th>Date</th></tr></thead>
+        <tbody>
+        {% for s in recent_sessions %}
+        <tr>
+            <td><a href="{{ url_for('admin.user_detail', user_id=s.user_id) }}">{{ s.user.username if s.user else s.user_id }}</a></td>
+            <td>{{ "%.1f"|format(s.score or 0) }}</td>
+            <td>{{ "%.0f"|format(s.accuracy * 100) }}%</td>
+            <td>{{ "%.0f"|format(s.avg_reaction_time_ms or 0) }}ms</td>
+            <td>{{ s.initial_difficulty }} &rarr; {{ s.final_difficulty or '-' }}</td>
+            <td><span class="badge-algo">{{ s.dda_algorithm_used or '-' }}</span></td>
+            <td>{{ s.started_at.strftime('%Y-%m-%d %H:%M') if s.started_at else '-' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+        <p style="color:var(--text-muted);">No sessions for this game yet.</p>
+    {% endif %}
+</div>
+
+<a href="{{ url_for('admin.games') }}" class="btn btn-secondary">&larr; Back to Games</a>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if user_stats %}
+<script>
+const userStats = {{ user_stats | tojson }};
+new Chart(document.getElementById('userGameChart'), {
+    type: 'bar',
+    data: {
+        labels: userStats.map(u => u.username),
+        datasets: [
+            {
+                label: 'Avg Score',
+                data: userStats.map(u => u.avg_score),
+                backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                yAxisID: 'y'
+            },
+            {
+                label: 'Accuracy (%)',
+                data: userStats.map(u => u.accuracy_pct),
+                type: 'line',
+                borderColor: 'rgba(75, 192, 92, 1)',
+                backgroundColor: 'rgba(75, 192, 92, 0.2)',
+                tension: 0.3,
+                yAxisID: 'y1'
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: { beginAtZero: true, title: { display: true, text: 'Avg Score' } },
+            y1: { beginAtZero: true, max: 100, position: 'right', title: { display: true, text: 'Accuracy %' }, grid: { drawOnChartArea: false } }
+        }
+    }
+});
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}NeuroFeedback - Integrated Cognitive Training System{% endblock %}
+{% block content %}
+<div class="hero">
+    <h1>&#x1F9E0; NeuroFeedback System</h1>
+    <p>An integrated neurofeedback platform with cognitive games and dynamic difficulty adjustment to keep you in the flow state.</p>
+    <div class="hero-actions">
+        <a href="{{ url_for('auth.register') }}" class="btn btn-primary">Get Started</a>
+        <a href="{{ url_for('auth.login') }}" class="btn btn-secondary">Login</a>
+    </div>
+</div>
+
+<div class="grid grid-3">
+    <div class="card" style="text-align:center;">
+        <h3>&#x1F3AE; Cognitive Games</h3>
+        <p>Multiple neurofeedback games targeting reaction time, memory, and attention.</p>
+    </div>
+    <div class="card" style="text-align:center;">
+        <h3>&#x1F4CA; Smart Analytics</h3>
+        <p>Track your cognitive performance with detailed metrics and progress charts.</p>
+    </div>
+    <div class="card" style="text-align:center;">
+        <h3>&#x1F916; Dynamic Difficulty</h3>
+        <p>AI-powered difficulty adjustment keeps you in the optimal flow state.</p>
+    </div>
+</div>
+{% endblock %}

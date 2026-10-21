@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Create Game - NeuroFeedback{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom:1.5rem;">&#x2795; Create New Game</h1>
+
+<div class="card" style="max-width:600px;">
+    <form method="POST">
+        <div class="form-group">
+            <label for="name">Game Name</label>
+            <input type="text" id="name" name="name" required placeholder="e.g. Reaction Speed Challenge">
+        </div>
+
+        <div class="form-group">
+            <label for="slug">Slug (URL identifier)</label>
+            <input type="text" id="slug" name="slug" required placeholder="e.g. reaction-speed">
+        </div>
+
+        <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" rows="3"></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="game_type">Game Type</label>
+            <select id="game_type" name="game_type" required>
+                <option value="reaction">Reaction Time</option>
+                <option value="memory">Pattern Memory</option>
+                <option value="stroop">Stroop Test</option>
+                <option value="nback">N-Back</option>
+                <option value="maze">Maze</option>
+                <option value="shooter">NeuroFeedback Shooter</option>
+                <option value="unity">Unity</option>
+            </select>
+        </div>
+
+        <div class="grid grid-3">
+            <div class="form-group">
+                <label for="min_difficulty">Min Difficulty</label>
+                <input type="number" id="min_difficulty" name="min_difficulty" value="1" min="1" max="20">
+            </div>
+            <div class="form-group">
+                <label for="max_difficulty">Max Difficulty</label>
+                <input type="number" id="max_difficulty" name="max_difficulty" value="10" min="1" max="20">
+            </div>
+            <div class="form-group">
+                <label for="default_difficulty">Default</label>
+                <input type="number" id="default_difficulty" name="default_difficulty" value="5" min="1" max="20">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="dda_algorithm">DDA Algorithm</label>
+            <select id="dda_algorithm" name="dda_algorithm">
+                {% for algo in algorithms %}
+                <option value="{{ algo }}">{{ algo|replace('_',' ')|title }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="is_unity_game">
+                <input type="checkbox" id="is_unity_game" name="is_unity_game"
+                    {% if game and game.is_unity_game %}checked{% endif %}>
+                Unity Game
+            </label>
+            <small class="form-text text-muted">Check if this is a Unity WebGL game</small>
+        </div>
+
+        <div class="form-group" id="unity-build-path-group" style="display: none;">
+            <label for="unity_build_path">Unity Build Path</label>
+            <input
+                type="text"
+                id="unity_build_path"
+                name="unity_build_path"
+                value="{{ game.unity_build_path if game else '' }}"
+                placeholder="neurofeedback">
+            <small class="form-text text-muted">
+                Path relative to app/static/unity_builds/ (e.g. "neurofeedback")
+            </small>
+        </div>
+
+        <button type="submit" class="btn btn-success btn-block">Create Game</button>
+    </form>
+</div>
+
+<a href="{{ url_for('admin.games') }}" class="btn btn-secondary" style="margin-top:1rem;">&larr; Back</a>
+
+<script>
+    const unityCheckbox = document.getElementById('is_unity_game');
+    const unityPathGroup = document.getElementById('unity-build-path-group');
+
+    function toggleUnityPath() {
+        unityPathGroup.style.display = unityCheckbox.checked ? 'block' : 'none';
+    }
+
+    unityCheckbox.addEventListener('change', toggleUnityPath);
+    toggleUnityPath();
+</script>
+{% endblock %}

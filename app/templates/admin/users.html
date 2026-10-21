@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Manage Users - NeuroFeedback{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:1.5rem;">&#x1F465; User Management</h1>
+
+<div class="card">
+    <div class="table-container">
+    <table>
+        <thead><tr><th>ID</th><th>Username</th><th>Email</th><th>Experimenter</th><th>Sessions</th><th>Accuracy</th><th>Avg Score</th><th>Avg RT</th><th>Joined</th><th>Last Login</th>{% if current_user.is_admin %}<th>Assign To</th>{% endif %}<th>Actions</th></tr></thead>
+        <tbody>
+        {% for user in users %}
+        {% set metrics = user_metrics.get(user.id, {}) %}
+        <tr>
+            <td>{{ user.id }}</td>
+            <td>{{ user.username }}</td>
+            <td>{{ user.email }}</td>
+            <td>
+                {% if user.experimenter %}
+                    {{ user.experimenter.username }}{% if user.experimenter.experimenter_code %} ({{ user.experimenter.experimenter_code }}){% endif %}
+                {% else %}
+                    -
+                {% endif %}
+            </td>
+            <td>{{ metrics.get('sessions', 0) }}</td>
+            <td>{{ metrics.get('accuracy_pct', 0) }}%</td>
+            <td>{{ metrics.get('avg_score', 0) }}</td>
+            <td>{{ metrics.get('avg_rt', 0) }}ms</td>
+            <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '-' }}</td>
+            <td>{{ user.last_login.strftime('%m/%d %H:%M') if user.last_login else 'Never' }}</td>
+            {% if current_user.is_admin %}
+            <td>
+                <form method="POST" action="{{ url_for('admin.assign_user', user_id=user.id) }}" style="display:flex; gap:0.3rem;">
+                    <select name="experimenter_id">
+                        <option value="">-- Unassigned --</option>
+                        {% for exp in experimenters %}
+                        <option value="{{ exp.id }}" {% if user.experimenter_id == exp.id %}selected{% endif %}>{{ exp.username }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-secondary btn-sm">Save</button>
+                </form>
+            </td>
+            {% endif %}
+            <td>
+                <a href="{{ url_for('admin.user_detail', user_id=user.id) }}" class="btn btn-primary btn-sm">View</a>
+                <a href="{{ url_for('admin.edit_user', user_id=user.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endblock %}

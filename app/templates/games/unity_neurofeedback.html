@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block title %}{{ game.name }} - Unity Neurofeedback Game{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2>{{ game.name }}</h2>
+                <a href="{{ url_for('games.game_list') }}" class="btn btn-secondary">Back to Games</a>
+            </div>
+
+            {% if game.description %}
+            <div class="alert alert-info">
+                <p>{{ game.description }}</p>
+            </div>
+            {% endif %}
+
+            <!-- Session Stats Display -->
+            <div class="card mb-3" id="session-stats" style="display: none;">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <strong>Trials:</strong> <span id="stat-trials">0</span>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Accuracy:</strong> <span id="stat-accuracy">0%</span>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Difficulty:</strong> <span id="stat-difficulty">{{ game.default_difficulty }}</span>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Cognitive Load:</strong> <span id="stat-cognitive-load">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Unity WebGL Container (NO iframe — Unity loads directly here) -->
+            <div class="card">
+                <div class="card-body p-0">
+                    <div id="unity-container" style="width: 100%; height: 600px; position: relative;">
+                        <canvas id="unity-canvas" style="width: 100%; height: 100%;"></canvas>
+                        <div id="unity-loading-bar" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;">
+                            <p>Loading Unity...</p>
+                            <div class="progress" style="width:300px;">
+                                <div id="unity-progress-bar" class="progress-bar" role="progressbar" style="width:0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EEG Status + last action -->
+            <div class="card mt-3" id="eeg-status">
+                <div class="card-body">
+                    <h5>EEG Device Status</h5>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="mb-2">
+                                <small>Attention:</small>
+                                <div class="progress">
+                                    <div id="eeg-attention-bar" class="progress-bar bg-success" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="mb-2">
+                                <small>Relaxation:</small>
+                                <div class="progress">
+                                    <div id="eeg-relaxation-bar" class="progress-bar bg-info" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="mb-2">
+                                <small>Cognitive Load:</small>
+                                <div class="progress">
+                                    <div id="eeg-cognitive-bar" class="progress-bar bg-warning" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <small>Last Command:</small><br>
+                            <strong id="last-command">--</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let sessionId = null;
+    let currentDifficulty = {{ game.default_difficulty }};
+    let unityInstance = null;
+    let eegPollingInterval = null;
+    let unityReady = false;
+    const unityBridgeParams = new URLSearchParams(window.location.search);
+    const unityCommandReceiver = unityBridgeParams.get('unityObject') || 'BCIRuntime';
+    const unityCommandMethod = unityBridgeParams.get('unityMethod') || 'ReceiveCommandFromJS';
+
+
+    const buildUrl = "{{ url_for('static', filename='unity_builds/' + game.unity_build_path + '/Build') }}";
+    const loaderUrl = buildUrl + "/web build.loader.js";
+    const unityCanvas = document.querySelector("#unity-canvas");
+
+    function loadUnity() {
+        const script = document.createElement("script");
+        script.src = loaderUrl;
+        script.onload = () => {
+            createUnityInstance(unityCanvas, {
+                dataUrl: buildUrl + "/web build.data.br",
+                frameworkUrl: buildUrl + "/web build.framework.js.br",
+                codeUrl: buildUrl + "/web build.wasm.br",
+                streamingAssetsUrl: "StreamingAssets",
+                companyName: "DefaultCompany",
+                productName: "{{ game.name }}",
+                productVersion: "1.0",
+            }, (progress) => {
+                document.getElementById('unity-progress-bar').style.width = (progress * 100) + '%';
+            }).then((instance) => {
+                unityInstance = instance;
+                unityReady = true;
+                document.getElementById('unity-loading-bar').style.display = 'none';
+                console.log("Unity loaded.");
+                startSession();
+            }).catch((err) => {
+                console.error("Unity failed to load:", err);
+            });
+        };
+        script.onerror = () => {
+            console.error("Failed to load Unity loader:", loaderUrl);
+        };
+        document.body.appendChild(script);
+    }
+
+    loadUnity();
+
+    // ─── 2. START SESSION ────────────────────────────────────────────────────
+
+    function startSession() {
+        fetch('/api/unity/session/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ game_id: {{ game.id }} })
+        })
+        .then(r => r.json())
+        .then(data => {
+            sessionId = data.session_id;
+            currentDifficulty = data.initial_difficulty;
+            document.getElementById('session-stats').style.display = 'block';
+            console.log('Session started:', sessionId);
+
+            // Start polling EEG commands
+            startEEGPolling();
+        })
+        .catch(err => {
+            console.error('Session start failed:', err);
+            alert('Failed to start game session. Please try again.');
+        });
+    }
+
+    // ─── 3. EEG POLLING → SEND COMMAND INTO UNITY ───────────────────────────
+
+    function startEEGPolling() {
+        eegPollingInterval = setInterval(async () => {
+            if (!unityReady || !sessionId) return;
+
+            try {
+                const res = await fetch('/api/unity/eeg/command', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: sessionId })
+                });
+
+                // Guard against non-JSON responses (login redirect / 500 error pages)
+                // so we never throw "Unexpected token '<'" inside res.json().
+                const contentType = res.headers.get('content-type') || '';
+                if (!res.ok || !contentType.includes('application/json')) {
+                    if (res.status === 401 || res.status === 403 || res.status === 404) {
+                        console.error('EEG poll stopping:', res.status);
+                        clearInterval(eegPollingInterval);
+                        return;
+                    }
+                    console.warn('EEG poll non-JSON response:', res.status);
+                    return;
+                }
+
+                const data = await res.json();
+
+                // Update EEG bars
+                if (data.eeg) {
+                    document.getElementById('eeg-attention-bar').style.width  = ((data.eeg.attention  || 0) * 100) + '%';
+                    document.getElementById('eeg-relaxation-bar').style.width = ((data.eeg.relaxation || 0) * 100) + '%';
+                    document.getElementById('eeg-cognitive-bar').style.width  = ((data.eeg.cognitive_load || 0) * 100) + '%';
+                    document.getElementById('stat-cognitive-load').textContent = ((data.eeg.cognitive_load || 0) * 100).toFixed(0) + '%';
+                }
+
+                // Send action into Unity
+                // data.action should be: MOVE_UP / MOVE_DOWN / MOVE_LEFT / MOVE_RIGHT / PAUSE / CONFIRM
+                if (data.action) {
+                    document.getElementById('last-command').textContent = data.action;
+
+                    sendUnityCommand(data.action);
+                }
+
+            } catch (err) {
+                console.error('EEG poll failed:', err);
+            }
+        }, 5000); // poll every 1.5 seconds — adjust as needed
+    }
+
+    function sendUnityCommand(action) {
+        if (!unityInstance || typeof unityInstance.SendMessage !== 'function') {
+            console.warn('Unity command skipped because SendMessage is not ready:', action);
+            return;
+        }
+
+        try {
+            unityInstance.SendMessage(unityCommandReceiver, unityCommandMethod, action);
+        } catch (err) {
+            console.error(
+                'Unity SendMessage failed. Check that the scene has a GameObject named "' +
+                unityCommandReceiver + '" with a public method "' + unityCommandMethod + '(string)".',
+                err
+            );
+        }
+    }
+
+    // ─── 4. TRIAL / SESSION EVENTS (kept from your original) ────────────────
+
+    function handleTrialComplete(data) {
+        if (!sessionId) return;
+
+        fetch('/api/unity/trial/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: sessionId,
+                trial_number: data.trialNumber,
+                is_correct: data.isCorrect,
+                reaction_time_ms: data.reactionTime,
+                eeg_attention: data.eegAttention || 0.5,
+                eeg_relaxation: data.eegRelaxation || 0.5,
+                eeg_cognitive_load: data.eegCognitiveLoad || 0.5
+            })
+        })
+        .then(r => r.json())
+        .then(result => {
+            currentDifficulty = result.new_difficulty;
+            document.getElementById('stat-trials').textContent    = result.session_stats.total_trials;
+            document.getElementById('stat-accuracy').textContent  = result.session_stats.accuracy + '%';
+            document.getElementById('stat-difficulty').textContent = currentDifficulty;
+        })
+        .catch(err => console.error('Trial submit failed:', err));
+    }
+
+    function handleSessionEnd() {
+        if (!sessionId) return;
+        clearInterval(eegPollingInterval);
+
+        fetch('/api/unity/session/' + sessionId + '/end', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(r => r.json())
+        .then(data => {
+            alert('Game Complete!\nScore: ' + data.final_stats.score + '\nAccuracy: ' + data.final_stats.accuracy + '%');
+            window.location.href = '/dashboard';
+        })
+        .catch(err => console.error('Session end failed:', err));
+    }
+
+    // Unity can still postMessage back for trial/session events
+    window.addEventListener('message', function(event) {
+        const data = event.data;
+        if (data.type === 'TRIAL_COMPLETE') handleTrialComplete(data);
+        else if (data.type === 'SESSION_END')   handleSessionEnd();
+    });
+
+    window.addEventListener('beforeunload', function() {
+        clearInterval(eegPollingInterval);
+        if (sessionId) {
+            navigator.sendBeacon('/api/unity/session/' + sessionId + '/end');
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}{{ game.name }} - NeuroFeedback{% endblock %}
+{% block content %}
+<div class="game-area">
+    <h1>&#x1F520; {{ game.name }}</h1>
+    <p style="color:var(--text-muted); margin-bottom:1rem;" id="instructions">Press "Match" if the current letter appeared N steps ago.</p>
+
+    <div class="game-stats-bar">
+        <div class="game-stat"><div class="value" id="trialNum">0</div><div class="label">Trial</div></div>
+        <div class="game-stat"><div class="value" id="nLevel">-</div><div class="label">N-Back</div></div>
+        <div class="game-stat"><div class="value" id="diffLevel">{{ initial_difficulty }}</div><div class="label">Difficulty</div></div>
+        <div class="game-stat"><div class="value" id="accuracy">0%</div><div class="label">Accuracy</div></div>
+        <div class="game-stat"><div class="value" id="avgRT">-</div><div class="label">Avg RT</div></div>
+    </div>
+
+    <div class="difficulty-indicator" id="diffDots"></div>
+
+    <div class="game-display" id="gameDisplay">
+        <div class="feedback-overlay" id="feedbackOverlay"></div>
+        <div id="gameContent">
+            <button class="game-btn start" id="startBtn" onclick="startGame()">Start Game</button>
+        </div>
+    </div>
+
+    <div class="game-controls" id="nbackControls" style="display:none;">
+        <button class="game-btn correct" id="matchBtn" onclick="handleResponse(true)">&#x2714; Match</button>
+        <button class="game-btn wrong" id="noMatchBtn" onclick="handleResponse(false)">&#x2718; No Match</button>
+    </div>
+
+    <div style="margin-top:1rem;">
+        <button class="btn btn-danger" onclick="endGame()">End Session</button>
+    </div>
+</div>
+
+<div class="results-overlay hidden" id="resultsOverlay">
+    <div class="results-card">
+        <h2>&#x1F3C6; Session Complete!</h2>
+        <div class="results-stats">
+            <div class="results-stat"><div class="value" id="resScore">0</div><div class="label">Score</div></div>
+            <div class="results-stat"><div class="value" id="resAccuracy">0%</div><div class="label">Accuracy</div></div>
+            <div class="results-stat"><div class="value" id="resTrials">0</div><div class="label">Trials</div></div>
+            <div class="results-stat"><div class="value" id="resRT">0ms</div><div class="label">Avg RT</div></div>
+        </div>
+        <a href="{{ url_for('games.game_list') }}" class="btn btn-primary">Back to Games</a>
+        <a href="{{ url_for('games.play_game', slug=game.slug) }}" class="btn btn-success" style="margin-left:0.5rem;">Play Again</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const SESSION_ID = {{ game_session.id }};
+const MAX_DIFFICULTY = {{ game.max_difficulty }};
+let currentDifficulty = {{ initial_difficulty }};
+let trialCount = 0;
+let gameActive = false;
+let stimulusTime = 0;
+let waitingForResponse = false;
+let sequence = [];
+let currentLetter = '';
+let nLevel = 1;
+let isMatch = false;
+let responded = false;
+let trialDeadlineHandle = null;
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+function updateDiffDots() {
+    const c = document.getElementById('diffDots');
+    c.innerHTML = '';
+    for (let i = 1; i <= MAX_DIFFICULTY; i++) {
+        const d = document.createElement('div');
+        d.className = 'difficulty-dot' + (i <= currentDifficulty ? ' active' : '') + (currentDifficulty >= 8 ? ' hard' : '');
+        c.appendChild(d);
+    }
+}
+updateDiffDots();
+
+function getNLevel() {
+    // N-back level scales with difficulty
+    return Math.min(Math.max(1, Math.ceil(currentDifficulty / 3)), 4);
+}
+
+function startGame() {
+    gameActive = true;
+    document.getElementById('startBtn').classList.add('hidden');
+    document.getElementById('nbackControls').style.display = 'flex';
+    sequence = [];
+    nextTrial();
+}
+
+function nextTrial() {
+    if (!gameActive) return;
+    if (trialDeadlineHandle) {
+        clearTimeout(trialDeadlineHandle);
+        trialDeadlineHandle = null;
+    }
+    responded = false;
+    nLevel = getNLevel();
+    document.getElementById('nLevel').textContent = nLevel;
+    document.getElementById('instructions').textContent =
+        `Press "Match" if the current letter is the same as ${nLevel} step${nLevel > 1 ? 's' : ''} ago.`;
+
+    // Decide if this should be a match trial
+    const matchChance = 0.3 + currentDifficulty * 0.02;
+    let letter;
+
+    if (sequence.length >= nLevel && Math.random() < matchChance) {
+        letter = sequence[sequence.length - nLevel];
+        isMatch = true;
+    } else {
+        // Pick a random letter, avoid accidental match
+        do {
+            letter = LETTERS[Math.floor(Math.random() * LETTERS.length)];
+        } while (sequence.length >= nLevel && letter === sequence[sequence.length - nLevel]);
+        isMatch = false;
+    }
+
+    currentLetter = letter;
+    sequence.push(letter);
+
+    // Show letter
+    const content = document.getElementById('gameContent');
+    content.innerHTML = `<div class="nback-letter">${letter}</div>
+        <p style="color:var(--text-muted); font-size:0.8rem;">Sequence position: ${sequence.length}</p>`;
+
+    stimulusTime = performance.now();
+    waitingForResponse = true;
+
+    // Keep trial pending until user gives explicit input.
+    // We still keep a soft timeout only for UI hinting.
+    const displayTime = Math.max(1500, 3500 - currentDifficulty * 180);
+    trialDeadlineHandle = setTimeout(() => {
+        if (waitingForResponse && gameActive) {
+            const content = document.getElementById('gameContent');
+            content.innerHTML += `<p style="color:var(--text-muted); font-size:0.8rem;">Waiting for input... (M/Space = Match, N = No Match)</p>`;
+        }
+    }, displayTime);
+}
+
+function handleResponse(userSaysMatch) {
+    if (!waitingForResponse || !gameActive) return;
+    waitingForResponse = false;
+    responded = true;
+    if (trialDeadlineHandle) {
+        clearTimeout(trialDeadlineHandle);
+        trialDeadlineHandle = null;
+    }
+
+    const rt = performance.now() - stimulusTime;
+
+    let isCorrect;
+    if (sequence.length <= nLevel) {
+        // Not enough history yet - "no match" is always correct
+        isCorrect = !userSaysMatch;
+    } else {
+        isCorrect = (userSaysMatch === isMatch);
+    }
+
+    showFeedback(isCorrect);
+    submitTrial(isCorrect, rt);
+}
+
+function showFeedback(correct) {
+    const overlay = document.getElementById('feedbackOverlay');
+    overlay.className = 'feedback-overlay ' + (correct ? 'correct show' : 'wrong show');
+    overlay.textContent = correct ? '✓' : '✗';
+    setTimeout(() => {
+        overlay.className = 'feedback-overlay';
+        if (gameActive) nextTrial();
+    }, 500);
+}
+
+function submitTrial(isCorrect, reactionTimeMs) {
+    trialCount++;
+    document.getElementById('trialNum').textContent = trialCount;
+
+    fetch('{{ url_for("games.submit_trial") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            session_id: SESSION_ID,
+            is_correct: isCorrect,
+            reaction_time_ms: Math.round(reactionTimeMs),
+            stimulus_data: {type: 'nback', letter: currentLetter, nLevel: nLevel, isMatch: isMatch, difficulty: currentDifficulty},
+            response_data: {responded: responded},
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        currentDifficulty = data.new_difficulty;
+        document.getElementById('diffLevel').textContent = currentDifficulty;
+        document.getElementById('accuracy').textContent = Math.round(data.accuracy * 100) + '%';
+        document.getElementById('avgRT').textContent = data.avg_rt ? Math.round(data.avg_rt) + 'ms' : '-';
+        updateDiffDots();
+    });
+}
+
+function endGame() {
+    gameActive = false;
+    waitingForResponse = false;
+    if (trialDeadlineHandle) {
+        clearTimeout(trialDeadlineHandle);
+        trialDeadlineHandle = null;
+    }
+    fetch('{{ url_for("games.end_session") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({session_id: SESSION_ID})
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('resScore').textContent = data.score;
+        document.getElementById('resAccuracy').textContent = data.accuracy + '%';
+        document.getElementById('resTrials').textContent = data.total_trials;
+        document.getElementById('resRT').textContent = (data.avg_rt || 0) + 'ms';
+        document.getElementById('resultsOverlay').classList.remove('hidden');
+    });
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+    if (!gameActive || !waitingForResponse) return;
+    if (e.key === 'm' || e.key === 'M' || e.key === ' ') handleResponse(true);
+    if (e.key === 'n' || e.key === 'N') handleResponse(false);
+});
+</script>
+{% endblock %}

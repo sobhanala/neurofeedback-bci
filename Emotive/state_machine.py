@@ -1,0 +1,20 @@
+from enum import Enum
+
+
+class FusionState(Enum):
+
+    STARTUP = "STARTUP"
+
+    READY = "READY"
+
+    RUNNING_TRIAL = "RUNNING_TRIAL"
+
+    COMMAND_READY = "COMMAND_READY"
+
+    WAITING_ACK = "WAITING_ACK"
+
+    REFRACTORY = "REFRACTORY"
+
+    ERROR = "ERROR"
+
+    SHUTDOWN = "SHUTDOWN"

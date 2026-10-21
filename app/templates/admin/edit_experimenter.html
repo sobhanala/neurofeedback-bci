@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Edit Experimenter - NeuroFeedback{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:1.5rem;">&#x1F52C; Edit Experimenter</h1>
+
+<div class="card" style="max-width:480px;">
+    <div class="card-header">{{ experimenter.username }} <code>{{ experimenter.experimenter_code or '' }}</code></div>
+    <form method="POST">
+        <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" value="{{ experimenter.username }}" required>
+        </div>
+        <div class="form-group">
+            <label for="password">New Password (leave blank to keep current)</label>
+            <input type="password" id="password" name="password" minlength="6" placeholder="Leave blank to keep current password">
+        </div>
+        <button type="submit" class="btn btn-success">Save Changes</button>
+        <a href="{{ url_for('admin.experimenters') }}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}{{ game.name }} - NeuroFeedback{% endblock %}
+{% block content %}
+<div class="game-area">
+    <h1>&#x1F9E9; {{ game.name }}</h1>
+    <p style="color:var(--text-muted); margin-bottom:1rem;">Memorize the highlighted pattern, then reproduce it by clicking the cells.</p>
+
+    <div class="game-stats-bar">
+        <div class="game-stat"><div class="value" id="trialNum">0</div><div class="label">Trial</div></div>
+        <div class="game-stat"><div class="value" id="diffLevel">{{ initial_difficulty }}</div><div class="label">Difficulty</div></div>
+        <div class="game-stat"><div class="value" id="accuracy">0%</div><div class="label">Accuracy</div></div>
+        <div class="game-stat"><div class="value" id="avgRT">-</div><div class="label">Avg RT</div></div>
+    </div>
+
+    <div class="difficulty-indicator" id="diffDots"></div>
+
+    <div class="game-display" id="gameDisplay">
+        <div class="feedback-overlay" id="feedbackOverlay"></div>
+        <div id="gameContent">
+            <button class="game-btn start" id="startBtn" onclick="startGame()">Start Game</button>
+        </div>
+    </div>
+
+    <div class="game-controls">
+        <button class="btn btn-danger" onclick="endGame()">End Session</button>
+    </div>
+</div>
+
+<div class="results-overlay hidden" id="resultsOverlay">
+    <div class="results-card">
+        <h2>&#x1F3C6; Session Complete!</h2>
+        <div class="results-stats">
+            <div class="results-stat"><div class="value" id="resScore">0</div><div class="label">Score</div></div>
+            <div class="results-stat"><div class="value" id="resAccuracy">0%</div><div class="label">Accuracy</div></div>
+            <div class="results-stat"><div class="value" id="resTrials">0</div><div class="label">Trials</div></div>
+            <div class="results-stat"><div class="value" id="resRT">0ms</div><div class="label">Avg RT</div></div>
+        </div>
+        <a href="{{ url_for('games.game_list') }}" class="btn btn-primary">Back to Games</a>
+        <a href="{{ url_for('games.play_game', slug=game.slug) }}" class="btn btn-success" style="margin-left:0.5rem;">Play Again</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const SESSION_ID = {{ game_session.id }};
+const MAX_DIFFICULTY = {{ game.max_difficulty }};
+let currentDifficulty = {{ initial_difficulty }};
+let trialCount = 0;
+let gameActive = false;
+let pattern = [];
+let userPattern = [];
+let gridSize = 3;
+let cellsToRemember = 2;
+let inputPhase = false;
+let stimulusTime = 0;
+
+function updateDiffDots() {
+    const c = document.getElementById('diffDots');
+    c.innerHTML = '';
+    for (let i = 1; i <= MAX_DIFFICULTY; i++) {
+        const d = document.createElement('div');
+        d.className = 'difficulty-dot' + (i <= currentDifficulty ? ' active' : '') + (currentDifficulty >= 8 ? ' hard' : '');
+        c.appendChild(d);
+    }
+}
+updateDiffDots();
+
+function getGridParams() {
+    if (currentDifficulty <= 3) { gridSize = 3; cellsToRemember = currentDifficulty + 1; }
+    else if (currentDifficulty <= 6) { gridSize = 4; cellsToRemember = currentDifficulty; }
+    else { gridSize = 5; cellsToRemember = currentDifficulty; }
+}
+
+function startGame() {
+    gameActive = true;
+    document.getElementById('startBtn').classList.add('hidden');
+    nextTrial();
+}
+
+function nextTrial() {
+    if (!gameActive) return;
+    getGridParams();
+    inputPhase = false;
+    userPattern = [];
+
+    // Generate random pattern
+    const totalCells = gridSize * gridSize;
+    pattern = [];
+    while (pattern.length < cellsToRemember) {
+        const idx = Math.floor(Math.random() * totalCells);
+        if (!pattern.includes(idx)) pattern.push(idx);
+    }
+
+    renderGrid(true);
+
+    // Show pattern, then hide
+    const showTime = Math.max(600, 2000 - currentDifficulty * 120);
+    setTimeout(() => {
+        if (!gameActive) return;
+        renderGrid(false);
+        inputPhase = true;
+        stimulusTime = performance.now();
+    }, showTime);
+}
+
+function renderGrid(showPattern) {
+    const content = document.getElementById('gameContent');
+    let html = `<p style="margin-bottom:0.5rem; color:var(--text-muted);">${showPattern ? 'Memorize this pattern!' : 'Now reproduce it!'}</p>`;
+    html += `<div class="memory-grid" style="grid-template-columns: repeat(${gridSize}, 60px);">`;
+    for (let i = 0; i < gridSize * gridSize; i++) {
+        const highlighted = showPattern && pattern.includes(i) ? ' highlighted' : '';
+        html += `<div class="memory-cell${highlighted}" data-idx="${i}" onclick="cellClick(${i})"></div>`;
+    }
+    html += '</div>';
+    content.innerHTML = html;
+}
+
+function cellClick(idx) {
+    if (!inputPhase || !gameActive) return;
+    if (userPattern.includes(idx)) return;
+
+    userPattern.push(idx);
+    const cell = document.querySelector(`[data-idx="${idx}"]`);
+    cell.classList.add(pattern.includes(idx) ? 'correct' : 'wrong');
+
+    if (userPattern.length >= cellsToRemember) {
+        inputPhase = false;
+        const rt = performance.now() - stimulusTime;
+        const correctCount = userPattern.filter(i => pattern.includes(i)).length;
+        const isCorrect = correctCount === cellsToRemember;
+
+        setTimeout(() => {
+            showFeedback(isCorrect);
+            submitTrial(isCorrect, rt);
+        }, 400);
+    }
+}
+
+function showFeedback(correct) {
+    const overlay = document.getElementById('feedbackOverlay');
+    overlay.className = 'feedback-overlay ' + (correct ? 'correct show' : 'wrong show');
+    overlay.textContent = correct ? '✓' : '✗';
+    setTimeout(() => {
+        overlay.className = 'feedback-overlay';
+        if (gameActive) nextTrial();
+    }, 800);
+}
+
+function submitTrial(isCorrect, reactionTimeMs) {
+    trialCount++;
+    document.getElementById('trialNum').textContent = trialCount;
+
+    fetch('{{ url_for("games.submit_trial") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            session_id: SESSION_ID,
+            is_correct: isCorrect,
+            reaction_time_ms: Math.round(reactionTimeMs),
+            stimulus_data: {type: 'memory', gridSize: gridSize, pattern: pattern, difficulty: currentDifficulty},
+            response_data: {userPattern: userPattern},
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        currentDifficulty = data.new_difficulty;
+        document.getElementById('diffLevel').textContent = currentDifficulty;
+        document.getElementById('accuracy').textContent = Math.round(data.accuracy * 100) + '%';
+        document.getElementById('avgRT').textContent = data.avg_rt ? Math.round(data.avg_rt) + 'ms' : '-';
+        updateDiffDots();
+    });
+}
+
+function endGame() {
+    gameActive = false;
+    fetch('{{ url_for("games.end_session") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({session_id: SESSION_ID})
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('resScore').textContent = data.score;
+        document.getElementById('resAccuracy').textContent = data.accuracy + '%';
+        document.getElementById('resTrials').textContent = data.total_trials;
+        document.getElementById('resRT').textContent = (data.avg_rt || 0) + 'ms';
+        document.getElementById('resultsOverlay').classList.remove('hidden');
+    });
+}
+</script>
+{% endblock %}

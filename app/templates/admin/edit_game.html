@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ game.name }} - NeuroFeedback{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:1.5rem;">&#x270F; Edit: {{ game.name }}</h1>
+
+<div class="card" style="max-width:600px;">
+    <form method="POST">
+        <div class="form-group">
+            <label for="name">Game Name</label>
+            <input type="text" id="name" name="name" value="{{ game.name }}" required>
+        </div>
+        <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" rows="3">{{ game.description or '' }}</textarea>
+        </div>
+        <div class="form-group">
+            <label for="game_type">Game Type</label>
+            <select id="game_type" name="game_type" required>
+                {% set current_type = game.game_type %}
+                <option value="reaction" {{ 'selected' if current_type == 'reaction' else '' }}>Reaction Time</option>
+                <option value="memory" {{ 'selected' if current_type == 'memory' else '' }}>Pattern Memory</option>
+                <option value="stroop" {{ 'selected' if current_type == 'stroop' else '' }}>Stroop Test</option>
+                <option value="nback" {{ 'selected' if current_type == 'nback' else '' }}>N-Back</option>
+                <option value="maze" {{ 'selected' if current_type == 'maze' else '' }}>Maze</option>
+                <option value="shooter" {{ 'selected' if current_type == 'shooter' else '' }}>NeuroFeedback Shooter</option>
+                <option value="unity" {{ 'selected' if current_type == 'unity' else '' }}>Unity</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="is_active" {{ 'checked' if game.is_active else '' }}> Active
+            </label>
+        </div>
+        <div class="grid grid-3">
+            <div class="form-group">
+                <label for="min_difficulty">Min Difficulty</label>
+                <input type="number" id="min_difficulty" name="min_difficulty" value="{{ game.min_difficulty }}" min="1" max="20">
+            </div>
+            <div class="form-group">
+                <label for="max_difficulty">Max Difficulty</label>
+                <input type="number" id="max_difficulty" name="max_difficulty" value="{{ game.max_difficulty }}" min="1" max="20">
+            </div>
+            <div class="form-group">
+                <label for="default_difficulty">Default</label>
+                <input type="number" id="default_difficulty" name="default_difficulty" value="{{ game.default_difficulty }}" min="1" max="20">
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="dda_algorithm">DDA Algorithm</label>
+            <select id="dda_algorithm" name="dda_algorithm">
+                {% for algo in algorithms %}
+                <option value="{{ algo }}" {{ 'selected' if algo == game.dda_algorithm else '' }}>{{ algo|replace('_',' ')|title }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+      <label for="is_unity_game">
+          <input type="checkbox" id="is_unity_game" name="is_unity_game" {% if game and
+          game.is_unity_game %}checked{% endif %}>
+          Unity Game
+      </label>
+      <small class="form-text text-muted">Check if this is a Unity WebGL game</small>
+  </div>
+
+  <div class="form-group" id="unity-build-path-group" style="display: none;">
+      <label for="unity_build_path">Unity Build Path</label>
+      <input type="text" class="form-control" id="unity_build_path" name="unity_build_path"
+             value="{{ game.unity_build_path if game else '' }}"
+             placeholder="neurofeedback">
+      <small class="form-text text-muted">Path relative to app/static/unity_builds/ (e.g.,
+      "neurofeedback")</small>
+  </div>
+
+
+        <button type="submit" class="btn btn-primary btn-block">Save Changes</button>
+
+    </form>
+</div>
+
+<a href="{{ url_for('admin.games') }}" class="btn btn-secondary" style="margin-top:1rem;">&larr; Back</a>
+{% endblock %}
+
+
+ <script>
+      // Toggle Unity build path visibility
+      document.getElementById('is_unity_game').addEventListener('change', function() {
+          document.getElementById('unity-build-path-group').style.display = this.checked ? 'block' :
+          'none';
+      });
+
+      // Show on page load if checked
+      if (document.getElementById('is_unity_game').checked) {
+          document.getElementById('unity-build-path-group').style.display = 'block';
+      }
+  </script>

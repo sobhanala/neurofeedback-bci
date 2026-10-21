@@ -1,0 +1,626 @@
+{% extends "base.html" %}
+
+{% block title %}{{ game.name }} - Play{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-2">
+        <div class="col">
+            <h4 class="mb-1">{{ game.name }}</h4>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Shooter Canvas -->
+        <div class="col-md-7">
+            <div class="card">
+                <div class="card-body text-center p-2">
+                    <div class="up-focus-panel">
+                        <div class="up-focus-title">Focus here to SHOOT</div>
+                        <div class="up-focus-dot hidden" id="upFocusDot"></div>
+                    </div>
+                    <canvas id="shooterCanvas" width="600" height="400" style="border: 2px solid #333; background: #222;"></canvas>
+                    <div class="mt-2">
+                        <button id="endGameBtn" class="btn btn-danger" style="display:none;">End Game</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats & EEG Panel -->
+        <div class="col-md-5">
+            <!-- Game Stats -->
+            <div class="card mb-2">
+                <div class="card-header bg-primary text-white">
+                    <h6 class="mb-0">Game Stats</h6>
+                </div>
+                <div class="card-body p-2">
+                    <div class="d-flex justify-content-between mb-1">
+                        <small><strong>Health:</strong> <span id="statHealth">100</span>/100</small>
+                        <small><strong>Score:</strong> <span id="statScore">0</span></small>
+                    </div>
+                    <div class="d-flex justify-content-between mb-1">
+                        <small><strong>Kills:</strong> <span id="statKills">0</span></small>
+                        <small><strong>Difficulty:</strong> <span id="statDifficulty">{{ initial_difficulty }}</span></small>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <small><strong>Time:</strong> <span id="statTime">0.0</span>s</small>
+                        <small><strong>Status:</strong> <span id="statStatus" class="badge bg-success">Playing</span></small>
+                    </div>
+                    <div class="progress mt-2" style="height: 20px;">
+                        <div id="healthBar" class="progress-bar bg-danger" role="progressbar" style="width: 100%;">100%</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EEG Feedback -->
+            <div class="card mb-2">
+                <div class="card-header bg-success text-white">
+                    <h6 class="mb-0">Brain Metrics</h6>
+                </div>
+                <div class="card-body p-2">
+                    <div class="mb-2">
+                        <label class="small fw-bold mb-1">Attention</label>
+                        <div class="progress" style="height: 20px;">
+                            <div id="eegAttention" class="progress-bar bg-info" role="progressbar" style="width: 50%;">50%</div>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="small fw-bold mb-1">Cognitive Load</label>
+                        <div class="progress" style="height: 20px;">
+                            <div id="eegLoad" class="progress-bar bg-warning" role="progressbar" style="width: 50%;">50%</div>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="small fw-bold mb-1">Relaxation</label>
+                        <div class="progress" style="height: 20px;">
+                            <div id="eegRelaxation" class="progress-bar bg-success" role="progressbar" style="width: 50%;">50%</div>
+                        </div>
+                    </div>
+                    <div class="alert alert-light mb-0 p-2">
+                        <small><strong>Last:</strong> <span id="lastCommand">Waiting...</span></small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DDA Feedback -->
+            <div class="card mb-2">
+                <div class="card-header bg-dark text-white">
+                    <h6 class="mb-0">DDA Status</h6>
+                </div>
+                <div class="card-body p-2">
+                    <div class="mb-1">
+                        <small><strong>Current:</strong> <span id="ddaCurrent">{{ initial_difficulty }}</span>/10</small>
+                    </div>
+                    <div class="mb-2">
+                        <small><strong>Next:</strong> <span id="ddaNext">Waiting...</span></small>
+                    </div>
+                    <div id="ddaReason" class="alert alert-info mb-0 p-2">
+                        <small>DDA adjusts based on performance and brain metrics.</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Instructions -->
+            <div class="card">
+                <div class="card-header bg-secondary text-white">
+                    <h6 class="mb-0">How to Play</h6>
+                </div>
+                <div class="card-body p-2">
+                    <ul class="small mb-0 ps-3">
+                        <li><strong>LEFT/RIGHT</strong> - Rotate player</li>
+                        <li><strong>Focus on red dot</strong> - Shoot bullets</li>
+                        <li>Destroy enemies before they reach center</li>
+                        <li>Watch wall indicators for spawns</li>
+                        <li>Survive as long as possible!</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.up-focus-panel {
+    background: #111;
+    border: 3px solid #ff3b3b;
+    border-radius: 14px;
+    box-shadow: 0 0 18px rgba(255, 0, 0, 0.35);
+    margin-bottom: 0.75rem;
+    padding: 0.75rem;
+}
+
+.up-focus-title {
+    color: white;
+    font-size: 0.9rem;
+    font-weight: 800;
+    margin-bottom: 0.5rem;
+}
+
+.up-focus-dot {
+    background: #ff0000;
+    border-radius: 50%;
+    box-shadow: 0 0 32px #ff0000;
+    height: 50px;
+    margin: 0 auto;
+    width: 50px;
+}
+
+.up-focus-dot.hidden {
+    visibility: hidden;
+}
+
+.up-focus-dot.flicker-12hz {
+    animation: upDotFlicker12Hz 83.33ms infinite alternate;
+}
+
+@keyframes upDotFlicker12Hz {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0.1; transform: scale(0.85); }
+}
+</style>
+
+<script>
+// Game state
+let sessionId = null;
+let gameStartTime = null;
+let timerInterval = null;
+let eegCommandInterval = null;
+let eegCommandInFlight = false;
+let gameLoopInterval = null;
+let spawnTimerInterval = null;
+let difficultyTimerInterval = null;
+
+// Game objects
+let player = {
+    x: 300,
+    y: 200,
+    radius: 20,
+    orientation: 'right'
+};
+
+let enemies = [];
+let bullets = [];
+let health = 100;
+let score = 0;
+let kills = 0;
+let difficulty = 1;
+let nextSpawnSide = 'right';
+let spawnWarningActive = false;
+let spawnWarningSide = null;
+
+const canvas = document.getElementById('shooterCanvas');
+const ctx = canvas.getContext('2d');
+
+const CANVAS_WIDTH = 600;
+const CANVAS_HEIGHT = 400;
+const FIRST_SPAWN_TIME = 10000;
+const SPAWN_INTERVAL = 40000;
+const DIFFICULTY_INTERVAL = 80000;
+const SPAWN_WARNING_TIME = 8000;
+
+async function initGame() {
+    try {
+        const response = await fetch('/api/shooter/session/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({game_id: {{ game.id }}})
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to start session');
+        }
+        
+        const data = await response.json();
+        sessionId = data.session_id;
+        health = data.health;
+        difficulty = data.initial_difficulty;
+        
+        localStorage.setItem('shooter_session_id', sessionId);
+        
+        document.getElementById('statHealth').textContent = health;
+        document.getElementById('statDifficulty').textContent = difficulty;
+        document.getElementById('ddaCurrent').textContent = difficulty;
+        document.getElementById('endGameBtn').style.display = 'inline-block';
+        
+        console.log('=== SHOOTER GAME STARTED ===');
+        console.log('Session ID:', sessionId);
+        console.log('Initial Difficulty:', difficulty);
+        
+        gameStartTime = Date.now();
+        startTimer();
+        startEEGCommandLoop();
+        startGameLoop();
+        startSpawnTimer();
+        startDifficultyTimer();
+        
+        drawGame();
+    } catch (error) {
+        console.error('Error starting game:', error);
+        alert('Failed to start game. Please try again.');
+    }
+}
+
+function startGameLoop() {
+    gameLoopInterval = setInterval(() => {
+        updateGame();
+        drawGame();
+    }, 1000 / 60);
+}
+
+function updateGame() {
+    bullets = bullets.filter(bullet => {
+        bullet.x += bullet.vx;
+        bullet.y += bullet.vy;
+        return bullet.x >= 0 && bullet.x <= CANVAS_WIDTH && 
+               bullet.y >= 0 && bullet.y <= CANVAS_HEIGHT;
+    });
+    
+    enemies.forEach(enemy => {
+        enemy.x += enemy.vx;
+        enemy.y += enemy.vy;
+    });
+    
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        for (let j = enemies.length - 1; j >= 0; j--) {
+            const bullet = bullets[i];
+            const enemy = enemies[j];
+            const dx = bullet.x - enemy.x;
+            const dy = bullet.y - enemy.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < bullet.radius + enemy.radius) {
+                bullets.splice(i, 1);
+                enemies.splice(j, 1);
+                kills++;
+                score += 10;
+                document.getElementById('statKills').textContent = kills;
+                document.getElementById('statScore').textContent = score;
+                break;
+            }
+        }
+    }
+    
+    for (let i = enemies.length - 1; i >= 0; i--) {
+        const enemy = enemies[i];
+        const dx = enemy.x - player.x;
+        const dy = enemy.y - player.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance < player.radius + enemy.radius) {
+            enemies.splice(i, 1);
+            health -= 5;
+            updateHealth();
+            
+            if (health <= 0) {
+                endGame();
+            }
+        }
+    }
+    
+    const survivalSeconds = Math.floor((Date.now() - gameStartTime) / 1000);
+    score = (kills * 10) + (survivalSeconds * 2);
+    document.getElementById('statScore').textContent = score;
+}
+
+function drawGame() {
+    ctx.fillStyle = '#222';
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    
+    if (spawnWarningActive) {
+        ctx.save();
+        const alpha = 0.3 + 0.3 * Math.sin(Date.now() / 100);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#ff0000';
+        
+        if (spawnWarningSide === 'left') {
+            ctx.fillRect(0, 0, 20, CANVAS_HEIGHT);
+        } else if (spawnWarningSide === 'right') {
+            ctx.fillRect(CANVAS_WIDTH - 20, 0, 20, CANVAS_HEIGHT);
+        }
+        
+        ctx.restore();
+    }
+    
+    ctx.save();
+    ctx.translate(player.x, player.y);
+    
+    ctx.fillStyle = '#00aaff';
+    ctx.beginPath();
+    ctx.arc(0, 0, player.radius, 0, 2 * Math.PI);
+    ctx.fill();
+    
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    if (player.orientation === 'left') {
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-player.radius - 10, 0);
+    } else {
+        ctx.moveTo(0, 0);
+        ctx.lineTo(player.radius + 10, 0);
+    }
+    ctx.stroke();
+    
+    ctx.restore();
+    
+    ctx.fillStyle = '#ffff00';
+    bullets.forEach(bullet => {
+        ctx.beginPath();
+        ctx.arc(bullet.x, bullet.y, bullet.radius, 0, 2 * Math.PI);
+        ctx.fill();
+    });
+    
+    ctx.fillStyle = '#ff3333';
+    enemies.forEach(enemy => {
+        ctx.beginPath();
+        ctx.arc(enemy.x, enemy.y, enemy.radius, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(enemy.x, enemy.y);
+        ctx.lineTo(enemy.x + enemy.vx * 10, enemy.y + enemy.vy * 10);
+        ctx.stroke();
+    });
+    
+    ctx.fillStyle = '#444';
+    ctx.beginPath();
+    ctx.arc(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 5, 0, 2 * Math.PI);
+    ctx.fill();
+}
+
+function spawnEnemies() {
+    const enemyCount = difficulty;
+    const baseSpeed = 0.15 + (difficulty - 1) * 0.03;
+    const spacing = 50; // horizontal distance between enemies in the same wave
+
+    for (let i = 0; i < enemyCount; i++) {
+        const enemy = {
+            radius: 15,
+            x: 0,
+            y: player.y,
+            vx: 0,
+            vy: 0
+        };
+
+        if (nextSpawnSide === 'left') {
+            // Spawn on the left wall, staggered outward so they don't overlap
+            enemy.x = 20 + i * spacing;
+            enemy.vx = baseSpeed;
+        } else {
+            // Spawn on the right wall, staggered outward so they don't overlap
+            enemy.x = CANVAS_WIDTH - 20 - i * spacing;
+            enemy.vx = -baseSpeed;
+        }
+
+        enemies.push(enemy);
+    }
+
+    nextSpawnSide = nextSpawnSide === 'left' ? 'right' : 'left';
+    console.log(`Spawned ${enemyCount} enemies`);
+}
+
+function setUpDotFlicker(active) {
+    const dot = document.getElementById('upFocusDot');
+    if (!dot) return;
+    if (active) {
+        dot.classList.remove('hidden');
+        dot.classList.add('flicker-12hz');
+    } else {
+        dot.classList.remove('flicker-12hz');
+        dot.classList.add('hidden');
+    }
+}
+
+function startSpawnTimer() {
+    // First wave spawns FIRST_SPAWN_TIME (10s) after game start.
+    setTimeout(() => {
+        spawnWarningActive = true;
+        spawnWarningSide = nextSpawnSide;
+        setUpDotFlicker(false);
+    }, FIRST_SPAWN_TIME - SPAWN_WARNING_TIME);
+
+    setTimeout(() => {
+        spawnWarningActive = false;
+        setUpDotFlicker(true);
+        spawnEnemies();
+
+        spawnTimerInterval = setInterval(() => {
+            spawnWarningActive = false;
+            setUpDotFlicker(true);
+            spawnEnemies();
+
+            setTimeout(() => {
+                spawnWarningActive = true;
+                spawnWarningSide = nextSpawnSide;
+                setUpDotFlicker(false);
+            }, SPAWN_INTERVAL - SPAWN_WARNING_TIME);
+        }, SPAWN_INTERVAL);
+    }, FIRST_SPAWN_TIME);
+}
+
+function startDifficultyTimer() {
+    difficultyTimerInterval = setInterval(() => {
+        difficulty++;
+        document.getElementById('statDifficulty').textContent = difficulty;
+        console.log('Difficulty increased to:', difficulty);
+    }, DIFFICULTY_INTERVAL);
+}
+
+function updateHealth() {
+    document.getElementById('statHealth').textContent = health;
+    const healthPercent = Math.max(0, (health / 100) * 100);
+    document.getElementById('healthBar').style.width = healthPercent + '%';
+    document.getElementById('healthBar').textContent = health + '%';
+    
+    if (health <= 0) {
+        document.getElementById('healthBar').classList.remove('bg-danger');
+        document.getElementById('healthBar').classList.add('bg-dark');
+    }
+}
+
+function startTimer() {
+    timerInterval = setInterval(() => {
+        const elapsed = (Date.now() - gameStartTime) / 1000;
+        document.getElementById('statTime').textContent = elapsed.toFixed(1);
+    }, 100);
+}
+
+function startEEGCommandLoop() {
+    eegCommandInterval = setInterval(async () => {
+        if (!sessionId || eegCommandInFlight) return;
+
+        eegCommandInFlight = true;
+        try {
+            const response = await fetch('/api/shooter/eeg/command', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({session_id: sessionId})
+            });
+            const data = await response.json();
+
+            if (!response.ok) {
+                document.getElementById('lastCommand').textContent = data.error || 'EEG command failed';
+                return;
+            }
+
+            const commandLabel = data.prediction || data.action || 'Unknown';
+            const confidence = Math.round((data.confidence || 0) * 100);
+            document.getElementById('lastCommand').textContent = `${commandLabel} (${confidence}%) - ${data.message}`;
+
+            if (data.eeg) {
+                updateEEGBars(data.eeg);
+            }
+
+            const action = data.prediction || data.action;
+            if (action === 'LEFT') {
+                player.orientation = 'left';
+            } else if (action === 'RIGHT') {
+                player.orientation = 'right';
+            } else if (action === 'UP') {
+                shootBullet();
+            }
+
+        } catch (error) {
+            console.error('Error requesting EEG command:', error);
+            document.getElementById('lastCommand').textContent = 'EEG command error';
+        } finally {
+            eegCommandInFlight = false;
+        }
+    }, 5000);
+    
+}
+        
+
+function shootBullet() {
+    const dir = player.orientation === 'left' ? -8 : 8;
+    // Fire a 3-round burst so each 5-second input is impactful.
+    [-14, 0, 14].forEach(offset => {
+        bullets.push({
+            x: player.x,
+            y: player.y + offset,
+            radius: 5,
+            vx: dir,
+            vy: 0
+        });
+    });
+}
+
+function updateEEGBars(eeg) {
+    const clampMetric = (value) => Math.max(0, Math.min(100, Math.round((Number(value) || 0) * 100)));
+    const attention = clampMetric(eeg.attention);
+    const load = clampMetric(eeg.cognitive_load);
+    const relaxation = clampMetric(eeg.relaxation);
+
+    document.getElementById('eegAttention').style.width = attention + '%';
+    document.getElementById('eegAttention').textContent = attention + '%';
+
+    document.getElementById('eegLoad').style.width = load + '%';
+    document.getElementById('eegLoad').textContent = load + '%';
+
+    document.getElementById('eegRelaxation').style.width = relaxation + '%';
+    document.getElementById('eegRelaxation').textContent = relaxation + '%';
+}
+
+async function endGame() {
+    if (timerInterval) clearInterval(timerInterval);
+    if (eegCommandInterval) clearInterval(eegCommandInterval);
+    if (gameLoopInterval) clearInterval(gameLoopInterval);
+    if (spawnTimerInterval) clearInterval(spawnTimerInterval);
+    if (difficultyTimerInterval) clearInterval(difficultyTimerInterval);
+    
+    document.getElementById('statStatus').textContent = 'Game Over';
+    document.getElementById('statStatus').classList.remove('bg-success');
+    document.getElementById('statStatus').classList.add('bg-danger');
+    
+    try {
+        const survivalTime = (Date.now() - gameStartTime) / 1000;
+        const accuracy = kills > 0 ? (kills / (kills + enemies.length)) * 100 : 0;
+        
+        const response = await fetch('/api/shooter/session/end', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                session_id: sessionId,
+                survival_time: survivalTime,
+                kills: kills,
+                accuracy: accuracy,
+                final_score: score,
+                final_health: health,
+                final_difficulty: difficulty
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to end session');
+        }
+        
+        const data = await response.json();
+        
+        console.log('=== GAME OVER ===');
+        console.log('Survival Time:', survivalTime + 's');
+        console.log('Kills:', kills);
+        console.log('Accuracy:', accuracy.toFixed(1) + '%');
+        console.log('Score:', score);
+        console.log('Next Difficulty:', data.next_difficulty);
+        
+        const directionLabel = data.dda_direction === 'harder' ? 'Harder ↑' : 
+                               data.dda_direction === 'easier' ? 'Easier ↓' : 'Same →';
+        
+        document.getElementById('ddaCurrent').textContent = difficulty;
+        document.getElementById('ddaNext').textContent = `${data.next_difficulty}/10 (${directionLabel})`;
+        document.getElementById('ddaReason').textContent = data.dda_reason || 'DDA completed.';
+        
+        const message = `Game Over!
+Survival Time: ${survivalTime.toFixed(1)}s
+Kills: ${kills}
+Accuracy: ${accuracy.toFixed(1)}%
+Score: ${score}
+Final Difficulty: ${difficulty}
+Next Difficulty: ${data.next_difficulty}/10
+
+Play again?`;
+        
+        if (confirm(message)) {
+            location.reload();
+        }
+        
+    } catch (error) {
+        console.error('Error ending game:', error);
+    }
+}
+
+document.getElementById('endGameBtn').addEventListener('click', () => {
+    if (confirm('Are you sure you want to end the game?')) {
+        endGame();
+    }
+});
+
+window.addEventListener('load', () => {
+    drawGame();
+    initGame();
+});
+</script>
+{% endblock %}

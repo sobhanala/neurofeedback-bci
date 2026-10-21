@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - NeuroFeedback{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:1.5rem;">Welcome, {{ current_user.username }}! &#x1F44B;</h1>
+
+<div class="card" style="margin-bottom:1.5rem;">
+    <div class="card-header">&#x1F3AE; Your Performance by Game</div>
+    {% if per_game_stats %}
+        <div class="grid grid-3">
+        {% for g in per_game_stats %}
+            {% if g.is_unity_game %}
+                {% set play_url = url_for('games.play_unity_game', slug=g.slug) %}
+            {% elif g.game_type == 'maze' %}
+                {% set play_url = url_for('games.play_maze_game', slug=g.slug) %}
+            {% else %}
+                {% set play_url = url_for('games.play_game', slug=g.slug) %}
+            {% endif %}
+            <div class="game-card" style="text-align:left;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h3 style="margin:0;">
+                        {% if g.game_type == 'reaction' %}&#x26A1;
+                        {% elif g.game_type == 'memory' %}&#x1F9E9;
+                        {% elif g.game_type == 'stroop' %}&#x1F308;
+                        {% elif g.game_type == 'nback' %}&#x1F520;
+                        {% elif g.game_type == 'maze' %}&#x1F9E9;
+                        {% else %}&#x1F3AE;{% endif %}
+                        {{ g.name }}
+                    </h3>
+                    <a href="{{ play_url }}" class="btn btn-primary btn-sm">Play</a>
+                </div>
+                {% if g.sessions > 0 %}
+                    <div class="grid grid-2" style="margin-top:0.8rem; gap:0.5rem;">
+                        <div><strong>{{ g.sessions }}</strong><br><small style="color:var(--text-muted);">Sessions</small></div>
+                        <div><strong>{{ "%.1f"|format(g.avg_score) }}</strong><br><small style="color:var(--text-muted);">Avg Score</small></div>
+                        <div><strong>{{ "%.1f"|format(g.best_score) }}</strong><br><small style="color:var(--text-muted);">Best Score</small></div>
+                        <div><strong>{{ "%.0f"|format(g.avg_rt) }}ms</strong><br><small style="color:var(--text-muted);">Avg Reaction</small></div>
+                    </div>
+                    <div style="margin-top:0.6rem;">
+                        <small style="color:var(--text-muted);">Accuracy: {{ g.accuracy_pct }}%</small>
+                        <div class="progress-bar"><div class="fill" style="width: {{ g.accuracy_pct }}%;"></div></div>
+                    </div>
+                {% else %}
+                    <p style="color:var(--text-muted); margin-top:0.8rem;">Not played yet.</p>
+                {% endif %}
+            </div>
+        {% endfor %}
+        </div>
+    {% else %}
+        <p style="color:var(--text-muted);">No games available yet. Ask an admin to create some!</p>
+    {% endif %}
+</div>
+
+{% if per_game_advancement %}
+<div class="card" style="margin-bottom:1.5rem;">
+    <div class="card-header">&#x1F4C8; Advancement Over Time (per game)</div>
+    <canvas id="perGameChart" height="120"></canvas>
+    <small style="color:var(--text-muted); display:block; margin-top:0.5rem;">
+        Each line is a game; points are play sessions in chronological order. Score rising over time shows improvement.
+    </small>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header">&#x1F4CB; Recent Sessions ({{ total_sessions }} total)</div>
+    {% if recent_sessions %}
+    <table>
+        <thead><tr><th>Game</th><th>Score</th><th>Accuracy</th><th>Date</th></tr></thead>
+        <tbody>
+        {% for s in recent_sessions %}
+        <tr>
+            <td>{{ s.game.name if s.game else "Unknown" }}</td>
+            <td>{{ "%.1f"|format(s.score or 0) }}</td>
+            <td>{{ "%.0f"|format(s.accuracy * 100) }}%</td>
+            <td>{{ s.started_at.strftime('%m/%d %H:%M') if s.started_at else '-' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+        <p style="color:var(--text-muted);">No sessions yet. Start playing!</p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if per_game_advancement %}
+<script>
+const advancement = {{ per_game_advancement | tojson }};
+const palette = ['#6c5ce7', '#00b894', '#0984e3', '#e17055', '#d63031', '#fdcb6e', '#00cec9', '#a29bfe'];
+let colorIdx = 0;
+const datasets = [];
+for (const [name, series] of Object.entries(advancement)) {
+    const color = palette[colorIdx % palette.length];
+    colorIdx++;
+    datasets.push({
+        label: name,
+        data: series.scores.map((s, i) => ({ x: i + 1, y: s })),
+        borderColor: color,
+        backgroundColor: color + '33',
+        tension: 0.3,
+        fill: false,
+        pointRadius: 3
+    });
+}
+new Chart(document.getElementById('perGameChart'), {
+    type: 'line',
+    data: { datasets: datasets },
+    options: {
+        responsive: true,
+        scales: {
+            x: {
+                type: 'linear',
+                title: { display: true, text: 'Play number (chronological)' },
+                ticks: { stepSize: 1, precision: 0 }
+            },
+            y: {
+                beginAtZero: true,
+                title: { display: true, text: 'Score' }
+            }
+        },
+        plugins: {
+            tooltip: {
+                callbacks: {
+                    title: function(items) {
+                        const idx = items[0].dataIndex;
+                        const name = items[0].dataset.label;
+                        return name + ' - ' + (advancement[name].labels[idx] || ('play ' + (idx + 1)));
+                    }
+                }
+            }
+        }
+    }
+});
+</script>
+{% endif %}
+{% endblock %}

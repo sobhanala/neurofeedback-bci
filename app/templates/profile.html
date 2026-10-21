@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}My Profile - NeuroFeedback{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:1.5rem;">&#x1F464; Performance Profile</h1>
+
+<div class="card">
+    <div class="card-header">Per-Game Statistics</div>
+    {% if game_stats %}
+    <table>
+        <thead><tr><th>Game</th><th>Sessions</th><th>Avg Score</th><th>Avg RT (ms)</th></tr></thead>
+        <tbody>
+        {% for stat in game_stats %}
+        <tr>
+            <td>{{ stat.name }}</td>
+            <td>{{ stat.sessions }}</td>
+            <td>{{ "%.1f"|format(stat.avg_score or 0) }}</td>
+            <td>{{ "%.0f"|format(stat.avg_rt or 0) }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+        <p style="color:var(--text-muted);">Play some games to see your stats here.</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-header">Session History</div>
+    {% if sessions %}
+    <div class="chart-container">
+        <canvas id="progressChart" height="200"></canvas>
+    </div>
+    <table>
+        <thead><tr><th>#</th><th>Game</th><th>Score</th><th>Accuracy</th><th>Difficulty</th><th>Algorithm</th><th>Date</th></tr></thead>
+        <tbody>
+        {% for s in sessions %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ s.game.name if s.game else "?" }}</td>
+            <td>{{ "%.1f"|format(s.score or 0) }}</td>
+            <td>{{ "%.0f"|format(s.accuracy * 100) }}%</td>
+            <td>{{ s.initial_difficulty }} &rarr; {{ s.final_difficulty or '-' }}</td>
+            <td><span class="badge-algo">{{ s.dda_algorithm_used or '-' }}</span></td>
+            <td>{{ s.started_at.strftime('%Y-%m-%d %H:%M') if s.started_at else '-' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+        <p style="color:var(--text-muted);">No sessions recorded yet.</p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if sessions %}
+<script>
+const ctx = document.getElementById('progressChart').getContext('2d');
+new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: [{% for s in sessions|reverse %}"{{ s.started_at.strftime('%m/%d') if s.started_at else '' }}"{% if not loop.last %},{% endif %}{% endfor %}],
+        datasets: [{
+            label: 'Score',
+            data: [{% for s in sessions|reverse %}{{ s.score or 0 }}{% if not loop.last %},{% endif %}{% endfor %}],
+            borderColor: '#6c5ce7',
+            tension: 0.3,
+            fill: false,
+        }]
+    },
+    options: { responsive: true, plugins: { legend: { display: true } } }
+});
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Games - NeuroFeedback{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:1.5rem;">&#x1F3AE; Cognitive Games</h1>
+<p style="margin-bottom:1.5rem; color:var(--text-muted);">Select a game to start training. Difficulty adjusts automatically based on your performance.</p>
+
+<div class="grid grid-3">
+{% for game in games %}
+  <div class="col-md-4 mb-4">
+      <div class="card">
+          <div class="card-body">
+              <h5 class="card-title">
+                  {{ game.name }}
+                  {% if game.is_unity_game %}
+                  <span class="badge badge-primary">Unity</span>
+                  {% endif %}
+              </h5>
+              <p class="card-text">{{ game.description or 'No description available' }}</p>
+              <p class="text-muted small">
+                  <strong>Type:</strong> {{ game.game_type }}<br>
+                  <strong>DDA:</strong> {{ game.dda_algorithm }}<br>
+                  <strong>Difficulty:</strong> {{ game.min_difficulty }}-{{ game.max_difficulty }}
+              </p>
+              {% if game.is_unity_game %}
+              <a href="{{ url_for('games.play_unity_game', slug=game.slug) }}" class="btn btn-primary
+              btn-block">
+                  <i class="fas fa-play"></i> Play Unity Game
+              </a>
+              {% elif game.game_type == 'maze' %}
+              <a href="{{ url_for('games.play_maze_game', slug=game.slug) }}" class="btn btn-primary btn-block">
+                  <i class="fas fa-play"></i> Play Maze Game
+              </a>
+              {% else %}
+              <a href="{{ url_for('games.play_game', slug=game.slug) }}" class="btn btn-primary btn-
+              block">
+                  <i class="fas fa-play"></i> Play Game
+              </a>
+              {% endif %}
+          </div>
+      </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if not games %}
+<div class="card" style="text-align:center; padding:3rem;">
+    <p style="font-size:1.2rem; color:var(--text-muted);">No games available yet. Contact an administrator.</p>
+</div>
+{% endif %}
+{% endblock %}

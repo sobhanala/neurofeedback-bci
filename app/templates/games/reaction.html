@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}{{ game.name }} - NeuroFeedback{% endblock %}
+{% block content %}
+<div class="game-area">
+    <h1>&#x26A1; {{ game.name }}</h1>
+    <p style="color:var(--text-muted); margin-bottom:1rem;">Click as fast as you can when the circle turns GREEN. Don't click on red!</p>
+
+    <div class="game-stats-bar">
+        <div class="game-stat"><div class="value" id="trialNum">0</div><div class="label">Trial</div></div>
+        <div class="game-stat"><div class="value" id="diffLevel">{{ initial_difficulty }}</div><div class="label">Difficulty</div></div>
+        <div class="game-stat"><div class="value" id="accuracy">0%</div><div class="label">Accuracy</div></div>
+        <div class="game-stat"><div class="value" id="avgRT">-</div><div class="label">Avg RT</div></div>
+    </div>
+
+    <div class="difficulty-indicator" id="diffDots"></div>
+
+    <div class="game-display" id="gameDisplay" style="cursor:pointer;">
+        <div class="feedback-overlay" id="feedbackOverlay"></div>
+        <div id="gameContent">
+            <button class="game-btn start" id="startBtn" onclick="startGame()">Start Game</button>
+        </div>
+    </div>
+
+    <div class="game-controls">
+        <button class="btn btn-danger" onclick="endGame()">End Session</button>
+    </div>
+</div>
+
+<div class="results-overlay hidden" id="resultsOverlay">
+    <div class="results-card">
+        <h2>&#x1F3C6; Session Complete!</h2>
+        <div class="results-stats">
+            <div class="results-stat"><div class="value" id="resScore">0</div><div class="label">Score</div></div>
+            <div class="results-stat"><div class="value" id="resAccuracy">0%</div><div class="label">Accuracy</div></div>
+            <div class="results-stat"><div class="value" id="resTrials">0</div><div class="label">Trials</div></div>
+            <div class="results-stat"><div class="value" id="resRT">0ms</div><div class="label">Avg RT</div></div>
+        </div>
+        <a href="{{ url_for('games.game_list') }}" class="btn btn-primary">Back to Games</a>
+        <a href="{{ url_for('games.play_game', slug=game.slug) }}" class="btn btn-success" style="margin-left:0.5rem;">Play Again</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const SESSION_ID = {{ game_session.id }};
+const MAX_DIFFICULTY = {{ game.max_difficulty }};
+let currentDifficulty = {{ initial_difficulty }};
+let trialCount = 0;
+let isWaiting = false;
+let stimulusShown = false;
+let stimulusTime = 0;
+let timeoutId = null;
+let gameActive = false;
+let state = 'idle'; // idle | waiting-go | red | green
+
+function updateDiffDots() {
+    const container = document.getElementById('diffDots');
+    container.innerHTML = '';
+    for (let i = 1; i <= MAX_DIFFICULTY; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'difficulty-dot' + (i <= currentDifficulty ? ' active' : '') + (currentDifficulty >= 8 ? ' hard' : '');
+        container.appendChild(dot);
+    }
+}
+updateDiffDots();
+
+function startGame() {
+    gameActive = true;
+    document.getElementById('startBtn').classList.add('hidden');
+    nextTrial();
+}
+
+function nextTrial() {
+    if (!gameActive) return;
+    const display = document.getElementById('gameDisplay');
+    const content = document.getElementById('gameContent');
+    stimulusShown = false;
+    isWaiting = false;
+    state = 'waiting-go';
+
+    display.style.background = '#dfe6e9';
+    content.innerHTML = '<p style="font-size:1.5rem; color:var(--text-muted);">Wait for GREEN...</p>';
+
+    // Delay scales with difficulty (harder = shorter wait range)
+    const minDelay = Math.max(500, 2500 - currentDifficulty * 200);
+    const maxDelay = Math.max(1000, 4000 - currentDifficulty * 250);
+    const delay = minDelay + Math.random() * (maxDelay - minDelay);
+
+    // Sometimes show red (distractor) - more distractors at higher difficulty
+    const distractorChance = 0.05 + currentDifficulty * 0.04;
+
+    timeoutId = setTimeout(() => {
+        if (!gameActive) return;
+        if (state !== 'waiting-go') return;
+
+        if (Math.random() < distractorChance) {
+            // Show red distractor; wait for explicit user click
+            display.style.background = '#d63031';
+            content.innerHTML = '<p style="font-size:3rem; color:#fff; font-weight:800;">&#x2718;</p><p style="color:#fff;">Click to mark wrong trial</p>';
+            isWaiting = true;
+            stimulusShown = false;
+            state = 'red';
+        } else {
+            // Show green - GO! Wait for explicit user click
+            display.style.background = '#00b894';
+            content.innerHTML = '<p style="font-size:3rem; color:#fff; font-weight:800;">GO!</p>';
+            stimulusShown = true;
+            isWaiting = false;
+            stimulusTime = performance.now();
+            state = 'green';
+        }
+    }, delay);
+}
+
+document.getElementById('gameDisplay').addEventListener('click', function() {
+    if (!gameActive) return;
+
+    if (state === 'red' && isWaiting) {
+        clearTimeout(timeoutId);
+        state = 'idle';
+        isWaiting = false;
+        submitTrial(false, 0);
+        showFeedback(false);
+        return;
+    }
+
+    if (state === 'green' && stimulusShown) {
+        clearTimeout(timeoutId);
+        const rt = performance.now() - stimulusTime;
+        stimulusShown = false;
+        state = 'idle';
+        submitTrial(true, rt);
+        showFeedback(true);
+    }
+});
+
+function showFeedback(correct) {
+    const overlay = document.getElementById('feedbackOverlay');
+    overlay.className = 'feedback-overlay ' + (correct ? 'correct show' : 'wrong show');
+    overlay.textContent = correct ? '✓' : '✗';
+    setTimeout(() => {
+        overlay.className = 'feedback-overlay';
+        if (gameActive) nextTrial();
+    }, 600);
+}
+
+function submitTrial(isCorrect, reactionTimeMs) {
+    trialCount++;
+    document.getElementById('trialNum').textContent = trialCount;
+
+    fetch('{{ url_for("games.submit_trial") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            session_id: SESSION_ID,
+            is_correct: isCorrect,
+            reaction_time_ms: Math.round(reactionTimeMs),
+            stimulus_data: {type: 'reaction', difficulty: currentDifficulty},
+            response_data: {clicked: true},
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        currentDifficulty = data.new_difficulty;
+        document.getElementById('diffLevel').textContent = currentDifficulty;
+        document.getElementById('accuracy').textContent = Math.round(data.accuracy * 100) + '%';
+        document.getElementById('avgRT').textContent = data.avg_rt ? Math.round(data.avg_rt) + 'ms' : '-';
+        updateDiffDots();
+    });
+}
+
+function endGame() {
+    gameActive = false;
+    clearTimeout(timeoutId);
+    state = 'idle';
+    isWaiting = false;
+    stimulusShown = false;
+
+    fetch('{{ url_for("games.end_session") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({session_id: SESSION_ID})
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('resScore').textContent = data.score;
+        document.getElementById('resAccuracy').textContent = data.accuracy + '%';
+        document.getElementById('resTrials').textContent = data.total_trials;
+        document.getElementById('resRT').textContent = (data.avg_rt || 0) + 'ms';
+        document.getElementById('resultsOverlay').classList.remove('hidden');
+    });
+}
+</script>
+{% endblock %}
