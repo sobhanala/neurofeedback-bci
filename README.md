@@ -145,4 +145,8 @@ python tests/test_maze_standalone.py
 
 The current entry point is for development. A production deployment needs a production WSGI server, a separately configured secret and database, disabled debug mode, and deployment-specific configuration. PostgreSQL requires a compatible driver such as `psycopg2-binary`, which is commented out in the supplied requirements.
 
-This source snapshot was prepared from the local `D:\Application` checkout of `Neurofeeback-BCI/Application`. It omits the original Git history, participant recordings, generated datasets, prediction logs, trained model assets, project proposal document, and bundled third-party device components. The original project directory is unchanged. No new license has been assigned; retain existing attributions and resolve third-party licensing before redistributing additional components.
+This public source copy represents the collaborative [Neurofeeback-BCI/Application](https://github.com/Neurofeeback-BCI/Application) project. Original contributor credits and supplied third-party notices are retained. It omits the original Git history, participant recordings, generated datasets, prediction logs, trained model assets, project proposal document, and bundled third-party device components. The original project directory is unchanged. No new license has been assigned; retain existing attributions and resolve third-party licensing before redistributing additional components.
+
+## Collaborative project
+
+Maintained here as Sobhan Alaeddini's public portfolio copy of the shared Neurofeeback-BCI application. The upstream repository remains private. This public copy intentionally excludes participant recordings, trained models, generated datasets, device binaries, and the upstream Git history. Hardware integration requires separately supplied dependencies as described above.
