@@ -53,3 +53,6 @@ Emotive/ssvep_dataset_raw/
 Emotive/final_models/
 Emotive/gate_model/
 Emotive/logs/
+
+# Local development files
+!.env.example

@@ -10,5 +10,4 @@ numpy
 scipy
 pylsl
 scikit-learn
-pylsl
 mne
